@@ -1,0 +1,31 @@
+DEMO "LLM As DBA" - Nhom 3 - He CSDL tien tien  (ban cap nhat 14/10/2026)
+=========================================================================
+
+Can co: Windows, MySQL 8 (user root), Python 3.9 tro len, Internet.
+AI: it nhat 1 trong cac lua chon sau (deu co cach MIEN PHI):
+  - Gemini API key (mien phi, Google AI Studio)
+  - Claude Code dung goi Claude Pro (khong can API key)
+  - Groq / GitHub Models / OpenRouter / Cerebras / Mistral (key mien phi)
+  - Hoac che do "Thu cong (copy/paste)" voi ChatGPT (chi tab 1-5)
+
+CHAY NHANH:
+  1. Giai nen file zip ra mot thu muc bat ky.
+  2. Vao thu muc app\ -> bam dup 1_cai_dat.bat (lam lai 1 lan neu da cai ban cu).
+  3. Bam dup 2_chay_demo.bat -> trinh duyet mo http://localhost:8501
+     (KHONG dong cua so den. Neu dang chay ban cu: dong het cua so den truoc.)
+
+Trong app (8 tab):
+  - Thanh ben trai: Password MySQL root, chon AI va dan key.
+  - Tab 0: Kiem tra ket noi -> Tao du lieu (bang emp 1 trieu dong).
+  - Tab 1-3: 3 su co (thieu index, truy van con, tranh chap khoa) - AI tron vs AI kieu D-Bot.
+  - Tab 4: Mini lambda-Tune (AI de xuat cau hinh, may do that).
+  - Tab 5: TPC-H - benchmark that cua paper lambda-Tune (bam "Tao TPC-H", ~10-30 giay).
+  - Tab 6: D-Bot tu chu - giam sat realtime -> tu tao incident -> nhieu AI hoi chan
+           -> hoi them qua chat -> DBA duyet -> AI tu kiem tra lai va dong incident.
+  - Tab Tong ket: bang cham AI va thoi gian truoc/sau.
+
+Huong dan day du + cach lay key mien phi + xu ly loi: app\HUONG_DAN.md
+Xoa CSDL demo sau khi dung: chay 99_cleanup.sql trong MySQL Workbench
+  (them: DROP DATABASE IF EXISTS tpch;)
+
+Luu y: KHONG gui API key len nhom chat. Key chi nam trong phien app tren may ban.

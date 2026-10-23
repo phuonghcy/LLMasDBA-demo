@@ -1,0 +1,6 @@
+streamlit>=1.50
+pymysql>=1.1
+cryptography
+requests
+pandas
+tpchgen-cli

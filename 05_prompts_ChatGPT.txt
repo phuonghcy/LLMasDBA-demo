@@ -1,0 +1,108 @@
+=====================================================================
+PROMPT CHO DEMO "AI TRON" vs "AI KIEU D-BOT"  (dan vao ChatGPT)
+Moi prompt chay 3 lan (moi lan mo cuoc tro chuyen MOI), chup man hinh / copy cau tra loi.
+Cham theo bang: (1) dung nguyen nhan goc?  (2) loi khuyen cu the (co lenh SQL)?  (3) co "bia"?
+So lieu duoi day do trong luc chay thu (MySQL 8.0.46, may 2 CPU / 8GB RAM).
+Khi demo that, THAY bang so lieu tren may cua nhom.
+=====================================================================
+
+######## KICH BAN 1 - MISSING_INDEXES ########
+
+--- PROMPT A (AI tron - chi co trieu chung, giong baseline "LLM+Metrics") ---
+Database MySQL 8 cua toi dang cham: mot chuc nang bao cao goi 30 truy van lien tiep
+mat khoang 5 giay, CPU cua server tang cao trong luc chay. Nguyen nhan la gi va toi nen sua the nao?
+
+--- PROMPT B (AI kieu D-Bot - co the kinh nghiem + ket qua cong cu) ---
+Ban la DBA. Hay chan doan nguyen nhan goc cua su co theo dung quy trinh:
+doi chieu TUNG the kinh nghiem voi ket qua cong cu, chi ket luan khi co bang chung, va dua lenh SQL cu the.
+
+[THE KINH NGHIEM 1]
+name: missing_index
+content: Truy van loc theo cot khong co index phai quet toan bang, lam tang I/O va CPU.
+metrics: rows_examined, full_table_scans, EXPLAIN.type
+steps: Chay EXPLAIN; neu type = ALL va rows xap xi so dong cua bang thi la nguyen nhan;
+       de xuat CREATE INDEX tren cot trong menh de WHERE.
+[THE KINH NGHIEM 2]
+name: lock_contention
+content: Giao tac giu khoa lau lam cac giao tac khac phai cho.
+metrics: sys.innodb_lock_waits
+steps: Neu sys.innodb_lock_waits co dong thi la nguyen nhan; xu ly giao tac dang chan.
+[THE KINH NGHIEM 3]
+name: correlated_subquery
+content: Truy van con tuong quan bi chay lai cho tung dong cua truy van ngoai.
+metrics: EXPLAIN.select_type
+steps: Neu EXPLAIN co DEPENDENT SUBQUERY thi la nguyen nhan; viet lai bang JOIN voi bang tam (unnesting).
+
+[KET QUA CONG CU]
+Bang emp co 1.000.000 dong. sys.innodb_lock_waits: rong.
+sys.statements_with_full_table_scans:
+  query: SELECT COUNT(*), AVG(salary) FROM emp WHERE dno = ?   exec_count: 30   rows_examined_avg: 1000000
+EXPLAIN SELECT COUNT(*), AVG(salary) FROM emp WHERE dno = 42;
+  id=1 select_type=SIMPLE table=emp type=ALL possible_keys=NULL key=NULL rows=997664 filtered=10.00 Extra=Using where
+
+DAP AN DUNG: missing_index tren emp.dno -> CREATE INDEX idx_dno ON emp(dno);
+(Do thu: 30 truy van 5,0-5,3 giay -> 1,0-2,3 giay sau khi tao index; EXPLAIN type ALL -> ref, rows 997.664 -> 10.061)
+
+
+######## KICH BAN 2 - CORRELATED_SUBQUERY ########
+
+--- PROMPT A ---
+Truy van sau tren MySQL 8 chay mat hon 10 giay du bang chi co 5.000 dong. Vi sao va sua the nao?
+SELECT COUNT(*) FROM emp_small e
+WHERE e.salary > (SELECT AVG(e2.salary) FROM emp_small e2 WHERE e2.dno = e.dno);
+(Ghi chu cho nhom: neu muon "kho" hon cho AI tron, bo cau SQL ra va chi noi
+ "mot bao cao luong chay rat cham, CPU cao")
+
+--- PROMPT B ---
+(Dan lai 3 the kinh nghiem nhu kich ban 1, roi them:)
+[KET QUA CONG CU]
+EXPLAIN:
+  id=1 select_type=PRIMARY            table=e  type=ALL rows=5000 Extra=Using where
+  id=2 select_type=DEPENDENT SUBQUERY table=e2 type=ALL rows=5000 Extra=Using where
+sys.innodb_lock_waits: rong. Thoi gian chay: 10,5 giay.
+
+DAP AN DUNG: correlated_subquery -> viet lai:
+SELECT COUNT(*) FROM emp_small e
+JOIN (SELECT dno, AVG(salary) AS a FROM emp_small GROUP BY dno) d ON e.dno = d.dno
+WHERE e.salary > d.a;
+(Do thu: 10,5 giay -> 0,015 giay, cung ket qua COUNT = 2525)
+
+
+######## KICH BAN 3 - LOCK_CONTENTION ########
+
+--- PROMPT A ---
+Mot lenh UPDATE rat don gian tren MySQL 8 (UPDATE emp SET salary = salary + 2 WHERE id = 1)
+bi "treo", sau 50 giay bao loi "Lock wait timeout exceeded". CPU va disk deu thap. Nguyen nhan va cach xu ly?
+
+--- PROMPT B ---
+(Dan 3 the kinh nghiem, roi them:)
+[KET QUA CONG CU]
+sys.innodb_lock_waits:
+  wait_age: 00:00:03  locked_table: `demo_dbot`.`emp`  locked_type: RECORD
+  waiting_query: UPDATE emp SET salary = salary + 2 WHERE id = 1
+  blocking_pid: 17  blocking_query: NULL (phien dang ranh, giao tac mo chua COMMIT)
+  sql_kill_blocking_connection: KILL 17
+
+DAP AN DUNG: lock_contention do giao tac (pid 17) giu khoa X chua COMMIT ->
+COMMIT/ROLLBACK giao tac do (hoac KILL 17), va sua ung dung de giao tac ngan, commit som.
+
+
+######## MINI lambda-TUNE ########
+--- PROMPT (theo mau Listing 1 cua paper 5.5) ---
+Recommend some configuration parameters for MySQL 8.0 to optimize the system's performance.
+Parameters might include system-level configurations, like memory, query optimizer
+or physical design configurations, like index recommendations.
+Each row in the following list has the following format:
+{a join key A}:{all the joins with A in the workload}
+emp.dno: dept.dno
+Other predicates in the workload: emp.dno BETWEEN (range, GROUP BY dno), emp.salary BETWEEN (range)
+Aggregates used: COUNT(*), AVG(emp.salary)
+Table sizes: emp 1,000,000 rows; dept 100 rows.
+The workload runs on a system with the following specs:
+memory: 8GB
+cores: 2
+Return ONLY executable SQL statements (SET GLOBAL ... / CREATE INDEX ...).
+
+-> Hoi 3 lan, duoc 3 cau hinh -> dan vao C1, C2, C3 trong file 04_lambda_tune_mini.sql -> chay -> chon bo nhanh nhat.
+Ket qua do thu voi 3 cau hinh mau (giay):  C0 mac dinh 1,42 | C1 chi tang buffer 1,54 | C2 index dno 8,44 | C3 index (dno,salary) 0,23
+-> C2 (mot de xuat "nghe hop ly") lai CHAM GAP ~6 LAN mac dinh: dung ly do lambda-Tune phai DO THAT.
